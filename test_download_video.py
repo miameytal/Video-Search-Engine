@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from yt_dlp.utils import DownloadError
-from download_video import search_and_download
+from download_video import search_and_download, detect_scenes, save_scene_images
 
 class TestDownloadVideo(unittest.TestCase):
 
@@ -120,6 +120,37 @@ class TestDownloadVideo(unittest.TestCase):
             mocked_print.assert_any_call("Downloading: Test Video")
 
         mock_ydl_instance.download.assert_called_once_with(['http://example.com'])
+
+    @patch('download_video.detect_scenes')
+    @patch('yt_dlp.YoutubeDL')
+    def test_detect_scenes_called(self, mock_yt_dlp, mock_detect_scenes):
+        # Test that detect_scenes is called after downloading the video
+        mock_ydl_instance = MagicMock()
+        mock_yt_dlp.return_value.__enter__.return_value = mock_ydl_instance
+        video_info = {'webpage_url': 'http://example.com', 'title': 'Test Video'}
+        mock_ydl_instance.extract_info.return_value = {'entries': [video_info]}
+        mock_ydl_instance.prepare_filename.return_value = 'test_video.mp4'
+
+        search_and_download("test query")
+
+        mock_detect_scenes.assert_called_once_with('test_video.mp4')
+
+    @patch('cv2.VideoCapture')
+    def test_save_scene_images_invalid_video_path(self, mock_video_capture):
+        # Test that save_scene_images handles an invalid video path
+        mock_cap_instance = MagicMock()
+        mock_video_capture.return_value = mock_cap_instance
+        mock_cap_instance.isOpened.return_value = False
+        scene_list = [((0, 0), (1, 0))]
+
+        with patch('builtins.print') as mocked_print:
+            save_scene_images('invalid_video.mp4', scene_list)
+            mocked_print.assert_called_with('Could not open video file: invalid_video.mp4')
+
+        mock_cap_instance.isOpened.assert_called_once()
+        mock_cap_instance.release.assert_called_once()
+        mock_cap_instance.set.assert_not_called()
+        mock_cap_instance.read.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
