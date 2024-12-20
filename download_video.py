@@ -6,12 +6,21 @@ import cv2
 import os
 import moondream as md
 from PIL import Image
+import hashlib
 
 # Retrieve the model path from an environmental variable
 model_path = os.getenv('MOONDREAM_MODEL_PATH')
 model = md.vl(model=model_path)
 
 def search_and_download(query):
+    # Create a unique filename for the JSON file based on the query
+    query_hash = hashlib.md5(query.encode()).hexdigest()
+    json_filename = f'scene_captions_{query_hash}.json'
+
+    if os.path.exists(json_filename):
+        print(f"{json_filename} already exists; skipping download and caption generation.")
+        return
+
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
@@ -43,7 +52,7 @@ def search_and_download(query):
             print(f"Video downloaded as: {video_filename}")
 
             # Perform scene detection
-            detect_scenes(video_filename)
+            detect_scenes(video_filename, json_filename)
 
     except DownloadError as e:
         print(f"An error occurred: {e}")
@@ -51,7 +60,7 @@ def search_and_download(query):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-def detect_scenes(video_path):
+def detect_scenes(video_path, json_filename):
     # Create a video manager
     video_manager = VideoManager([video_path])
     # Create a scene manager
@@ -68,13 +77,13 @@ def detect_scenes(video_path):
         print(f"Detected {len(scene_list)} scenes.")
 
         # Save images of detected scenes
-        save_scene_images(video_path, scene_list)
+        save_scene_images(video_path, scene_list, json_filename)
 
     finally:
         # Release the video manager
         video_manager.release()
 
-def save_scene_images(video_path, scene_list):
+def save_scene_images(video_path, scene_list, json_filename):
     # Create a directory to save scene images
     output_dir = "scene_images"
     os.makedirs(output_dir, exist_ok=True)
@@ -105,9 +114,9 @@ def save_scene_images(video_path, scene_list):
     cap.release()
 
     # Generate captions for the saved scene images
-    generate_caption(output_dir)
+    generate_caption(output_dir, json_filename)
 
-def generate_caption(output_dir):
+def generate_caption(output_dir, json_filename):
     import json
     if os.getenv('USE_CAPTION_STUB') == 'true':
         # Produce dummy captions for each image in the directory
@@ -117,7 +126,7 @@ def generate_caption(output_dir):
             captions_dict[i] = f"Dummy caption {i}"
             print(f"DUMMY CAPTION for {image_file}: {captions_dict[i]}")
 
-        with open('scene_captions.json', 'w') as f:
+        with open(json_filename, 'w') as f:
             json.dump(captions_dict, f, indent=4)
         print("Dummy captions generated. JSON file created.")
         return
@@ -135,7 +144,7 @@ def generate_caption(output_dir):
             caption = model.caption(encoded_image)["caption"]
             captions_dict[i] = caption
             print(f"Caption for {image_file}: {caption}")
-    with open('scene_captions.json', 'w') as f:
+    with open(json_filename, 'w') as f:
         json.dump(captions_dict, f, indent=4)
 
 
