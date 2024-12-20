@@ -4,6 +4,12 @@ from scenedetect import VideoManager, SceneManager
 from scenedetect.detectors import ContentDetector
 import cv2
 import os
+import moondream as md
+from PIL import Image
+
+# Retrieve the model path from an environmental variable
+model_path = os.getenv('MOONDREAM_MODEL_PATH')
+model = md.vl(model=model_path)
 
 def search_and_download(query):
     ydl_opts = {
@@ -73,6 +79,10 @@ def save_scene_images(video_path, scene_list):
     output_dir = "scene_images"
     os.makedirs(output_dir, exist_ok=True)
 
+    # Determine the number of digits required to represent the scene numbers
+    num_scenes = len(scene_list)
+    num_digits = len(str(num_scenes))
+
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -85,12 +95,31 @@ def save_scene_images(video_path, scene_list):
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = cap.read()
         if ret:
-            image_path = os.path.join(output_dir, f"scene_{i+1}.jpg")
+            # Ensure the scene number is represented with the appropriate number of digits
+            scene_number = str(i + 1).zfill(num_digits)
+            image_path = os.path.join(output_dir, f"scene_{scene_number}.jpg")
             cv2.imwrite(image_path, frame)
             print(f"Saved scene image: {image_path}")
         else:
             print(f"Failed to read frame at scene {i+1}")
     cap.release()
+
+    # Generate captions for the saved scene images
+    generate_caption(output_dir)
+
+def generate_caption(output_dir):
+    # Iterate over each saved scene image
+    for image_file in os.listdir(output_dir):
+        image_path = os.path.join(output_dir, image_file)
+        if os.path.isfile(image_path) and image_path.endswith('.jpg'):
+            # Load and process image
+            image = Image.open(image_path)
+            encoded_image = model.encode_image(image)
+
+            # Generate caption
+            caption = model.caption(encoded_image)["caption"]
+            print(f"Caption for {image_file}: {caption}")
+
 
 if __name__ == "__main__":
     search_query = "super mario movie trailer"
