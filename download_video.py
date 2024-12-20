@@ -108,8 +108,23 @@ def save_scene_images(video_path, scene_list):
     generate_caption(output_dir)
 
 def generate_caption(output_dir):
+    import json
+    if os.getenv('USE_CAPTION_STUB') == 'true':
+        # Produce dummy captions for each image in the directory
+        images = [f for f in sorted(os.listdir(output_dir)) if f.endswith('.jpg')]
+        captions_dict = {}
+        for i, image_file in enumerate(images, start=1):
+            captions_dict[i] = f"Dummy caption {i}"
+            print(f"DUMMY CAPTION for {image_file}: {captions_dict[i]}")
+
+        with open('scene_captions.json', 'w') as f:
+            json.dump(captions_dict, f, indent=4)
+        print("Dummy captions generated. JSON file created.")
+        return
+
+    captions_dict = {}
     # Iterate over each saved scene image
-    for image_file in os.listdir(output_dir):
+    for i, image_file in enumerate(sorted(os.listdir(output_dir)), start=1):
         image_path = os.path.join(output_dir, image_file)
         if os.path.isfile(image_path) and image_path.endswith('.jpg'):
             # Load and process image
@@ -118,7 +133,10 @@ def generate_caption(output_dir):
 
             # Generate caption
             caption = model.caption(encoded_image)["caption"]
+            captions_dict[i] = caption
             print(f"Caption for {image_file}: {caption}")
+    with open('scene_captions.json', 'w') as f:
+        json.dump(captions_dict, f, indent=4)
 
 
 if __name__ == "__main__":
