@@ -5,7 +5,7 @@ from scenedetect.detectors import ContentDetector
 import cv2
 import os
 import moondream as md
-from PIL import Image
+from PIL import Image, ImageDraw
 import hashlib
 from rapidfuzz import process
 
@@ -163,8 +163,38 @@ def search_captions(json_filename):
     found_scenes = [scene for scene, caption in captions_dict.items() if process.extractOne(search_word, [caption.lower()], score_cutoff=50)]
     if found_scenes:
         print(f"Scenes containing the word '{search_word}': {found_scenes}")
+        create_collage(found_scenes, len(captions_dict))
     else:
         print(f"No scenes found containing the word '{search_word}'.")
+
+def create_collage(found_scenes, total_scenes):
+    # Calculate the number of digits required for zero-padding
+    num_digits = len(str(total_scenes))
+
+    # Load the images for the found scenes
+    images = [Image.open(f"scene_images/scene_{str(scene).zfill(num_digits)}.jpg") for scene in found_scenes]
+
+    # Determine the size of the collage
+    num_images = len(images)
+    collage_size = int(num_images**0.5) + (1 if int(num_images**0.5)**2 < num_images else 0)
+    max_width = max(img.width for img in images)
+    max_height = max(img.height for img in images)
+
+    # Create a new blank image for the collage
+    collage = Image.new('RGB', (collage_size * max_width, collage_size * max_height))
+
+    # Paste the images into the collage
+    for idx, img in enumerate(images):
+        x_offset = (idx % collage_size) * max_width
+        y_offset = (idx // collage_size) * max_height
+        collage.paste(img, (x_offset, y_offset))
+
+    # Save the collage to a file
+    collage.save('collage.png')
+    print("Collage saved as 'collage.png'.")
+
+    # Display the collage
+    collage.show()
 
 if __name__ == "__main__":
     search_query = "super mario movie trailer"
