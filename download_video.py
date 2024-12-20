@@ -19,7 +19,7 @@ def search_and_download(query):
 
     if os.path.exists(json_filename):
         print(f"{json_filename} already exists; skipping download and caption generation.")
-        return
+        return json_filename
 
     ydl_opts = {
         'format': 'best',
@@ -36,7 +36,7 @@ def search_and_download(query):
             search_results = [entry for entry in search_results if entry is not None]
             if not search_results:
                 print("No results found.")
-                return
+                return None
 
             # Get the first valid result
             video_info = search_results[0]
@@ -59,6 +59,8 @@ def search_and_download(query):
         raise
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
+    return json_filename
 
 def detect_scenes(video_path, json_filename):
     # Create a video manager
@@ -147,7 +149,26 @@ def generate_caption(output_dir, json_filename):
     with open(json_filename, 'w') as f:
         json.dump(captions_dict, f, indent=4)
 
+def search_captions(json_filename):
+    import json
+    # Load the captions from the JSON file
+    with open(json_filename, 'r') as f:
+        captions_dict = json.load(f)
+
+    # Prompt the user to enter a word to search for
+    search_word = input("Search the video using a word: ").strip().lower()
+
+    # Find and print the scenes that contain the search word
+    found_scenes = [scene for scene, caption in captions_dict.items() if search_word in caption.lower()]
+    if found_scenes:
+        print(f"Scenes containing the word '{search_word}': {found_scenes}")
+    else:
+        print(f"No scenes found containing the word '{search_word}'.")
 
 if __name__ == "__main__":
     search_query = "super mario movie trailer"
-    search_and_download(search_query)
+    json_filename = search_and_download(search_query)
+    
+    if json_filename:
+        # Search the captions for a word
+        search_captions(json_filename)
