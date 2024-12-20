@@ -7,6 +7,7 @@ import os
 import moondream as md
 from PIL import Image
 import hashlib
+from rapidfuzz import process
 
 # Retrieve the model path from an environmental variable
 model_path = os.getenv('MOONDREAM_MODEL_PATH')
@@ -158,8 +159,8 @@ def search_captions(json_filename):
     # Prompt the user to enter a word to search for
     search_word = input("Search the video using a word: ").strip().lower()
 
-    # Find and print the scenes that contain the search word
-    found_scenes = [scene for scene, caption in captions_dict.items() if search_word in caption.lower()]
+    # Find and print the scenes that contain the search word using rapidfuzz
+    found_scenes = [scene for scene, caption in captions_dict.items() if process.extractOne(search_word, [caption.lower()], score_cutoff=50)]
     if found_scenes:
         print(f"Scenes containing the word '{search_word}': {found_scenes}")
     else:
