@@ -1,5 +1,6 @@
 import yt_dlp
 from yt_dlp.utils import DownloadError
+import time
 from scenedetect import VideoManager, SceneManager
 from scenedetect.detectors import ContentDetector
 import cv2
@@ -89,6 +90,8 @@ def detect_scenes(video_path, json_filename):
     finally:
         # Release the video manager
         video_manager.release()
+    
+    return scene_list
 
 def save_scene_images(video_path, scene_list, json_filename):
     # Create a directory to save scene images
@@ -177,6 +180,7 @@ def search_captions(json_filename):
     else:
         print(f"No scenes found containing the word '{search_word}'.")
 
+
 def create_collage(found_scenes, total_scenes):
     # Calculate the number of digits required for zero-padding
     num_digits = len(str(total_scenes))
@@ -206,27 +210,62 @@ def create_collage(found_scenes, total_scenes):
     # Display the collage
     collage.show()
 
-def call_google_gemini_api():
+def call_gemini(video_file_name, word):
     """
-    Configures the API key from an environment variable and makes a request to the Google Gemini model.
-    Prints and returns the response as a JSON object.
+    Configures the API key from an environment variable and makes a request to the Google Gemini model
+    to search through a single video for scenes related to the given word.
+    Returns the timestamps of the scenes where the word was detected.
     """
-    api_key = os.getenv("GEMINI_API_KEY", "")  # Retrieve your API key from an env variable
+    # Extract the display name from the video file name
+    display_name = os.path.splitext(os.path.basename(video_file_name))[0]
+
+    api_key = os.getenv("GEMINI_API_KEY", "")
     genai.configure(api_key=api_key)
+
+    # Get file list in Gemini
+    fileList = genai.list_files(page_size=100)
+
+    # Check uploaded file.
+    video_file = next((f for f in fileList if f.display_name == display_name), None)
+    if video_file is None:
+        print(f"Uploading file...")
+        video_file = genai.upload_file(path=video_file_name, display_name=display_name, resumable=True)
+        print(f"Completed upload: {video_file.uri}")
+    else:
+        print(f"File URI: {video_file.uri}")
+
+    # Check the state of the uploaded file.
+    while video_file.state.name == "PROCESSING":
+        print(".", end="")
+        time.sleep(10)
+        video_file = genai.get_file(video_file.name)
+
+    if video_file.state.name == "FAILED":
+        raise ValueError(video_file.state.name)
+
+    # Build a prompt that requests a JSON object with a "timestamps" array
+    query_prompt = (
+        f"Search through this video for scenes related to the word '{word}'.\n"
+        "Return your answer in valid JSON with a top-level 'timestamps' key containing an array of timestamps.\n"
+        "If no scenes match, provide an empty array for 'timestamps'."
+    )
     model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content("Explain how AI works")
-    
-    # Convert the response to a dictionary
-    response_json = response.to_dict()  # Changed from response.json() to response.to_dict()
+    response = model.generate_content([video_file, query_prompt])
+    response_json = response.to_dict()
     
     print("Response JSON:", response_json)
-    return response_json
+    
+    timestamps = response_json.get("timestamps", [])
+    return timestamps
 
 if __name__ == "__main__":
-    call_google_gemini_api()
     search_query = "super mario movie trailer"
     json_filename = search_and_download(search_query)
     
     if json_filename:
         # Search the captions for a word
         search_captions(json_filename)
+
+
+    call_gemini(r"C:\Users\User\Desktop\Mia\SDAI\Ex_2.2\Video-Search-Engine\The Super Mario Bros. Movie ｜ Official Trailer [TnGl01FkMMo].mp4", "fire")
+
