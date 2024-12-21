@@ -23,9 +23,13 @@ def search_and_download(query):
     query_hash = hashlib.md5(query.encode()).hexdigest()
     json_filename = f'scene_captions_{query_hash}.json'
 
+    # Determine the video filepath based on the query hash
+    video_filename = f"{query_hash}.mp4"
+    video_filepath = os.path.join(os.getcwd(), video_filename)
+
     if os.path.exists(json_filename):
         print(f"{json_filename} already exists; skipping download and caption generation.")
-        return json_filename
+        return json_filename, video_filepath
 
     ydl_opts = {
         'format': 'best',
@@ -42,7 +46,7 @@ def search_and_download(query):
             search_results = [entry for entry in search_results if entry is not None]
             if not search_results:
                 print("No results found.")
-                return None
+                return None, None
 
             # Get the first valid result
             video_info = search_results[0]
@@ -54,8 +58,12 @@ def search_and_download(query):
             ydl.download([video_url])
 
             # Get the filename of the downloaded video
-            video_filename = ydl.prepare_filename(video_info)
-            print(f"Video downloaded as: {video_filename}")
+            downloaded_video_filename = ydl.prepare_filename(video_info)
+            print(f"Video downloaded as: {downloaded_video_filename}")
+
+            # Rename the downloaded video to include the hash
+            os.rename(downloaded_video_filename, video_filename)
+            print(f"Video renamed to: {video_filename}")
 
             # Perform scene detection
             detect_scenes(video_filename, json_filename)
@@ -66,7 +74,7 @@ def search_and_download(query):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-    return json_filename
+    return json_filename, video_filepath
 
 def detect_scenes(video_path, json_filename):
     # Create a video manager
@@ -259,13 +267,21 @@ def call_gemini(video_file_name, word):
     return timestamps
 
 if __name__ == "__main__":
+    # Ask the user to choose between image model and video model
+    model_choice = prompt("Choose a model to search the video (image/video): ").strip().lower()
+
     search_query = "super mario movie trailer"
-    json_filename = search_and_download(search_query)
+    json_filename, video_filepath = search_and_download(search_query)
     
-    if json_filename:
-        # Search the captions for a word
-        search_captions(json_filename)
-
-
-    call_gemini(r"C:\Users\User\Desktop\Mia\SDAI\Ex_2.2\Video-Search-Engine\The Super Mario Bros. Movie ｜ Official Trailer [TnGl01FkMMo].mp4", "fire")
+    if json_filename and video_filepath:
+        if model_choice == "image":
+            # Search the captions for a word using the image model
+            search_captions(json_filename)
+        elif model_choice == "video":
+            # Ask the user what to find in the video using the video model
+            print("video_filepath: ", video_filepath)
+            search_word = prompt("Using a video model. What would you like me to find in the video? ").strip()
+            call_gemini(video_filepath, search_word)
+        else:
+            print("Invalid choice. Please choose either 'image' or 'video'.")
 
