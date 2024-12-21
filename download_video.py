@@ -13,6 +13,7 @@ from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 import requests
 import google.generativeai as genai
+import json
 
 # Retrieve the model path from an environmental variable
 model_path = os.getenv('MOONDREAM_MODEL_PATH')
@@ -136,7 +137,7 @@ def save_scene_images(video_path, scene_list, json_filename):
 
 def generate_caption(output_dir, json_filename):
     import json
-    if os.getenv('USE_CAPTION_STUB') == 'true':
+    if os.getenv('USE_CAPTION_STUB') == 'true': #TODO: remove this stub
         # Produce dummy captions for each image in the directory
         images = [f for f in sorted(os.listdir(output_dir)) if f.endswith('.jpg')]
         captions_dict = {}
@@ -266,6 +267,65 @@ def call_gemini(video_file_name, word):
     timestamps = response_json.get("timestamps", [])
     return timestamps
 
+def call_gemini_stub(video_file_name, word):
+    """
+    Stub function to mimic the behavior of the Google Gemini model.
+    Returns a mock response with timestamps.
+    """
+    print("Using Gemini stub...")
+    # Mock response with timestamps in seconds
+    mock_response = {
+        "timestamps": [12.34, 56.78, 90.12]
+    }
+    return mock_response["timestamps"]
+
+def create_collage_from_timestamps(video_file_name, timestamps):
+    # Open the video file using OpenCV
+    cap = cv2.VideoCapture(video_file_name)
+    if not cap.isOpened():
+        print(f"Could not open video file: {video_file_name}")
+        cap.release()
+        return
+
+    images = []
+    for timestamp in timestamps:
+        # Convert timestamp to frame number
+        cap.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000)
+        ret, frame = cap.read()
+        if ret:
+            # Convert frame to PIL image
+            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            images.append(image)
+        else:
+            print(f"Failed to read frame at timestamp {timestamp}")
+
+    cap.release()
+
+    if images:
+        # Determine the size of the collage
+        num_images = len(images)
+        collage_size = int(num_images**0.5) + (1 if int(num_images**0.5)**2 < num_images else 0)
+        max_width = max(img.width for img in images)
+        max_height = max(img.height for img in images)
+
+        # Create a new blank image for the collage
+        collage = Image.new('RGB', (collage_size * max_width, collage_size * max_height))
+
+        # Paste the images into the collage
+        for idx, img in enumerate(images):
+            x_offset = (idx % collage_size) * max_width
+            y_offset = (idx // collage_size) * max_height
+            collage.paste(img, (x_offset, y_offset))
+
+        # Save the collage to a file
+        collage.save('collage.png')
+        print("Collage saved as 'collage.png'.")
+
+        # Display the collage
+        collage.show()
+    else:
+        print("No images to create a collage.")
+
 if __name__ == "__main__":
     # Ask the user to choose between image model and video model
     model_choice = prompt("Choose a model to search the video (image/video): ").strip().lower()
@@ -281,7 +341,13 @@ if __name__ == "__main__":
             # Ask the user what to find in the video using the video model
             print("video_filepath: ", video_filepath)
             search_word = prompt("Using a video model. What would you like me to find in the video? ").strip()
-            call_gemini(video_filepath, search_word)
+            print("USE_GEMINI_STUB: ", os.getenv('USE_GEMINI_STUB')) #TODO: remove this stub
+            # Use the stub function if the environment variable is set, otherwise use the actual API call
+            if os.getenv('USE_GEMINI_STUB') == 'true':
+                timestamps = call_gemini_stub(video_filepath, search_word)
+            else:
+                timestamps = call_gemini(video_filepath, search_word)
+            # Create and display a collage of scenes at the given timestamps
+            create_collage_from_timestamps(video_filepath, timestamps)
         else:
             print("Invalid choice. Please choose either 'image' or 'video'.")
-
