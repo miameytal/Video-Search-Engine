@@ -8,6 +8,10 @@ import moondream as md
 from PIL import Image, ImageDraw
 import hashlib
 from rapidfuzz import process
+from prompt_toolkit import prompt
+from prompt_toolkit.completion import WordCompleter
+import requests
+import google.generativeai as genai
 
 # Retrieve the model path from an environmental variable
 model_path = os.getenv('MOONDREAM_MODEL_PATH')
@@ -156,8 +160,14 @@ def search_captions(json_filename):
     with open(json_filename, 'r') as f:
         captions_dict = json.load(f)
 
-    # Prompt the user to enter a word to search for
-    search_word = input("Search the video using a word: ").strip().lower()
+    # Extract unique words from captions for auto-complete
+    words = set()
+    for caption in captions_dict.values():
+        words.update(caption.lower().split())
+    completer = WordCompleter(list(words), ignore_case=True)
+
+    # Prompt the user to enter a word to search for with auto-complete
+    search_word = prompt("Search the video using a word: ", completer=completer).strip().lower()
 
     # Find and print the scenes that contain the search word using rapidfuzz
     found_scenes = [scene for scene, caption in captions_dict.items() if process.extractOne(search_word, [caption.lower()], score_cutoff=50)]
@@ -196,7 +206,24 @@ def create_collage(found_scenes, total_scenes):
     # Display the collage
     collage.show()
 
+def call_google_gemini_api():
+    """
+    Configures the API key from an environment variable and makes a request to the Google Gemini model.
+    Prints and returns the response as a JSON object.
+    """
+    api_key = os.getenv("GEMINI_API_KEY", "")  # Retrieve your API key from an env variable
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content("Explain how AI works")
+    
+    # Convert the response to a dictionary
+    response_json = response.to_dict()  # Changed from response.json() to response.to_dict()
+    
+    print("Response JSON:", response_json)
+    return response_json
+
 if __name__ == "__main__":
+    call_google_gemini_api()
     search_query = "super mario movie trailer"
     json_filename = search_and_download(search_query)
     
