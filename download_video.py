@@ -27,7 +27,7 @@ def search_and_download(query):
     video_filename = f"{query_hash}.mp4"
     video_filepath = os.path.join(os.getcwd(), video_filename)
 
-    if os.path.exists(video_filename):
+    if os.path.exists(video_filepath):
         print(f"{video_filename} already exists; skipping download.")
         return video_filepath
 
@@ -74,6 +74,16 @@ def search_and_download(query):
     return video_filepath
 
 def detect_scenes(video_path, json_filename):
+    # Create a directory to save scene images
+    output_dir = f"scene_images_{hashlib.md5(video_path.encode()).hexdigest()}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Check if scene images for this video already exist
+    scene_images_exist = any(fname.endswith('.jpg') for fname in os.listdir(output_dir))
+    if scene_images_exist:
+        print("Scene images for this video already exist; skipping scene detection.")
+        return
+
     # Create a video manager
     video_manager = VideoManager([video_path])
     # Create a scene manager
@@ -90,7 +100,7 @@ def detect_scenes(video_path, json_filename):
         print(f"Detected {len(scene_list)} scenes.")
 
         # Save images of detected scenes
-        save_scene_images(video_path, scene_list, json_filename)
+        save_scene_images(video_path, scene_list, json_filename, output_dir, scene_images_exist)
 
     finally:
         # Release the video manager
@@ -98,10 +108,11 @@ def detect_scenes(video_path, json_filename):
     
     return scene_list
 
-def save_scene_images(video_path, scene_list, json_filename):
-    # Create a directory to save scene images
-    output_dir = "scene_images"
-    os.makedirs(output_dir, exist_ok=True)
+def save_scene_images(video_path, scene_list, json_filename, output_dir, scene_images_exist):
+    # Check if scene images for this video already exist
+    if scene_images_exist:
+        print("Scene images for this video already exist; skipping saving scene images.")
+        return
 
     # Determine the number of digits required to represent the scene numbers
     num_scenes = len(scene_list)
@@ -132,6 +143,11 @@ def save_scene_images(video_path, scene_list, json_filename):
     generate_caption(output_dir, json_filename)
 
 def generate_caption(output_dir, json_filename):
+    # Check if captions already exist
+    if os.path.exists(json_filename):
+        print("Captions already exist; skipping caption generation.")
+        return
+
     import json
     if os.getenv('USE_CAPTION_STUB') == 'true': #TODO: remove this stub
         # Produce dummy captions for each image in the directory
@@ -358,10 +374,13 @@ def create_collage_from_timestamps(video_file_name, timestamps):
         print("No images to create a collage.")
 
 if __name__ == "__main__":
+
+    # Ask the user to input the search query
+    search_query = prompt("What video do you want to search?: ").strip()
+
     # Ask the user to choose between image model and video model
     model_choice = prompt("Choose a model to search the video (image/video): ").strip().lower()
 
-    search_query = "super mario movie trailer"
     video_filepath = search_and_download(search_query)
     
     if video_filepath:
