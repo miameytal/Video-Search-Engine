@@ -11,6 +11,9 @@ import hashlib
 from rapidfuzz import process
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.styles import Style
+from prompt_toolkit.shortcuts import print_formatted_text
+from prompt_toolkit.formatted_text import HTML
 import requests
 import google.generativeai as genai
 import json
@@ -18,6 +21,14 @@ import json
 # Retrieve the model path from an environmental variable
 model_path = os.getenv('MOONDREAM_MODEL_PATH')
 model = md.vl(model=model_path)
+
+# Define styles for prompt_toolkit
+style = Style.from_dict({
+    'prompt': 'ansicyan bold',
+    'info': 'ansigreen',
+    'warning': 'ansiyellow',
+    'error': 'ansired bold',
+})
 
 def search_and_download(query):
     # Create a unique filename for the JSON file based on the query
@@ -28,7 +39,7 @@ def search_and_download(query):
     video_filepath = os.path.join(os.getcwd(), video_filename)
 
     if os.path.exists(video_filepath):
-        print(f"{video_filename} already exists; skipping download.")
+        print_formatted_text(HTML(f'<info>{video_filename} already exists; skipping download.</info>'), style=style)
         return video_filepath
 
     ydl_opts = {
@@ -45,31 +56,30 @@ def search_and_download(query):
             # Filter out None entries
             search_results = [entry for entry in search_results if entry is not None]
             if not search_results:
-                print("No results found.")
+                print_formatted_text(HTML('<warning>No results found.</warning>'), style=style)
                 return None
 
             # Get the first valid result
             video_info = search_results[0]
             video_url = video_info['webpage_url']
 
-            print(f"Downloading: {video_info['title']}")
+            print_formatted_text(HTML(f'<info>Downloading: {video_info["title"]}</info>'), style=style)
 
             # Download the video
             ydl.download([video_url])
 
             # Get the filename of the downloaded video
             downloaded_video_filename = ydl.prepare_filename(video_info)
-            print(f"Video downloaded as: {downloaded_video_filename}")
+            print_formatted_text(HTML('<info>Video downloaded</info>'), style=style)
 
             # Rename the downloaded video to include the hash
             os.rename(downloaded_video_filename, video_filename)
-            print(f"Video renamed to: {video_filename}")
 
     except DownloadError as e:
-        print(f"An error occurred: {e}")
+        print_formatted_text(HTML(f'<error>An error occurred: {e}</error>'), style=style)
         raise
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print_formatted_text(HTML(f'<error>An unexpected error occurred: {e}</error>'), style=style)
 
     return video_filepath
 
@@ -81,7 +91,7 @@ def detect_scenes(video_path, json_filename):
     # Check if scene images for this video already exist
     scene_images_exist = any(fname.endswith('.jpg') for fname in os.listdir(output_dir))
     if scene_images_exist:
-        print("Scene images for this video already exist; skipping scene detection.")
+        print_formatted_text(HTML('<info>Scene images for this video already exist; skipping scene detection.</info>'), style=style)
         return
 
     # Create a video manager
@@ -97,7 +107,6 @@ def detect_scenes(video_path, json_filename):
         scene_manager.detect_scenes(frame_source=video_manager)
         # Obtain list of detected scenes
         scene_list = scene_manager.get_scene_list()
-        print(f"Detected {len(scene_list)} scenes.")
 
         # Save images of detected scenes
         save_scene_images(video_path, scene_list, json_filename, output_dir, scene_images_exist)
@@ -111,7 +120,7 @@ def detect_scenes(video_path, json_filename):
 def save_scene_images(video_path, scene_list, json_filename, output_dir, scene_images_exist):
     # Check if scene images for this video already exist
     if scene_images_exist:
-        print("Scene images for this video already exist; skipping saving scene images.")
+        print_formatted_text(HTML('<info>Scene images for this video already exist; skipping saving scene images.</info>'), style=style)
         return
 
     # Determine the number of digits required to represent the scene numbers
@@ -121,7 +130,7 @@ def save_scene_images(video_path, scene_list, json_filename, output_dir, scene_i
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"Could not open video file: {video_path}")
+        print_formatted_text(HTML(f'<error>Could not open video file, {video_path}</error>'), style=style)
         cap.release()
         return
 
@@ -134,9 +143,8 @@ def save_scene_images(video_path, scene_list, json_filename, output_dir, scene_i
             scene_number = str(i + 1).zfill(num_digits)
             image_path = os.path.join(output_dir, f"scene_{scene_number}.jpg")
             cv2.imwrite(image_path, frame)
-            print(f"Saved scene image: {image_path}")
         else:
-            print(f"Failed to read frame at scene {i+1}")
+            print_formatted_text(HTML(f'<warning>Failed to read frame at scene {i+1}</warning>'), style=style)
     cap.release()
 
     # Generate captions for the saved scene images
@@ -145,7 +153,7 @@ def save_scene_images(video_path, scene_list, json_filename, output_dir, scene_i
 def generate_caption(output_dir, json_filename):
     # Check if captions already exist
     if os.path.exists(json_filename):
-        print("Captions already exist; skipping caption generation.")
+        print_formatted_text(HTML('<info>Captions already exist; skipping caption generation.</info>'), style=style)
         return
 
     import json
@@ -155,11 +163,10 @@ def generate_caption(output_dir, json_filename):
         captions_dict = {}
         for i, image_file in enumerate(images, start=1):
             captions_dict[i] = f"Dummy caption {i}"
-            print(f"DUMMY CAPTION for {image_file}: {captions_dict[i]}")
 
         with open(json_filename, 'w') as f:
             json.dump(captions_dict, f, indent=4)
-        print("Dummy captions generated. JSON file created.")
+        print_formatted_text(HTML('<info>Dummy captions generated. JSON file created.</info>'), style=style)
         return
 
     captions_dict = {}
@@ -174,7 +181,6 @@ def generate_caption(output_dir, json_filename):
             # Generate caption
             caption = model.caption(encoded_image)["caption"]
             captions_dict[i] = caption
-            print(f"Caption for {image_file}: {caption}")
     with open(json_filename, 'w') as f:
         json.dump(captions_dict, f, indent=4)
 
@@ -191,15 +197,14 @@ def search_captions(json_filename):
     completer = WordCompleter(list(words), ignore_case=True)
 
     # Prompt the user to enter a word to search for with auto-complete
-    search_word = prompt("Search the video using a word: ", completer=completer).strip().lower()
+    search_word = prompt(HTML('<prompt>Search the video using a word: </prompt>'), completer=completer, style=style).strip().lower()
 
     # Find and print the scenes that contain the search word using rapidfuzz
     found_scenes = [scene for scene, caption in captions_dict.items() if process.extractOne(search_word, [caption.lower()], score_cutoff=50)]
     if found_scenes:
-        print(f"Scenes containing the word '{search_word}': {found_scenes}")
         create_collage(found_scenes, len(captions_dict))
     else:
-        print(f"No scenes found containing the word '{search_word}'.")
+        print_formatted_text(HTML(f'<warning>No scenes found containing the word "{search_word}".</warning>'), style=style)
 
 
 def create_collage(found_scenes, total_scenes):
@@ -226,7 +231,7 @@ def create_collage(found_scenes, total_scenes):
 
     # Save the collage to a file
     collage.save('collage.png')
-    print("Collage saved as 'collage.png'.")
+    print_formatted_text(HTML('<info>Collage saved as "collage.png".</info>'), style=style)
 
     # Display the collage
     collage.show()
@@ -249,11 +254,11 @@ def call_gemini(video_file_name, word):
     # Check uploaded file.
     video_file = next((f for f in fileList if f.display_name == display_name), None)
     if video_file is None:
-        print(f"Uploading file...")
+        print_formatted_text(HTML('<info>Uploading file...</info>'), style=style)
         video_file = genai.upload_file(path=video_file_name, display_name=display_name, resumable=True)
-        print(f"Completed upload: {video_file.uri}")
+        print_formatted_text(HTML('<info>Completed upload.</info>'), style=style)
     else:
-        print(f"File URI: {video_file.uri}")
+        print_formatted_text(HTML(f'<info>File URI: {video_file.uri}</info>'), style=style)
 
     # Check the state of the uploaded file.
     while video_file.state.name == "PROCESSING":
@@ -287,8 +292,6 @@ def call_gemini(video_file_name, word):
     response = model.generate_content([video_file, query_prompt])
     response_json = response.to_dict()
     
-    print("Response JSON:", response_json)
-    
     # Extract the JSON string from the response and parse it
     content = response_json['candidates'][0]['content']['parts'][0]['text']
     timestamps_json = json.loads(content.strip('```json\n').strip('\n```'))
@@ -300,7 +303,7 @@ def call_gemini_stub(video_file_name, word):
     Stub function to mimic the behavior of the Google Gemini model.
     Returns a mock response with timestamps.
     """
-    print("Using Gemini stub...")
+    print_formatted_text(HTML('<info>Using Gemini stub...</info>'), style=style)
     # Mock response with timestamps in hh:mm:ss format
     mock_response = {
         "timestamps": ["00:02:34", "00:05:40", "00:08:50"]
@@ -327,7 +330,7 @@ def create_collage_from_timestamps(video_file_name, timestamps):
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_file_name)
     if not cap.isOpened():
-        print(f"Could not open video file: {video_file_name}")
+        print_formatted_text(HTML(f'<error>Could not open video file, {video_file_name}</error>'), style=style)
         cap.release()
         return
 
@@ -335,16 +338,14 @@ def create_collage_from_timestamps(video_file_name, timestamps):
     for timestamp in timestamps:
         # Convert timestamp to milliseconds and add a buffer of 500 milliseconds
         timestamp_ms = parse_timestamp(timestamp) + 500
-        print(f"Seeking to {timestamp} ({timestamp_ms} ms)")  # Debug print
         cap.set(cv2.CAP_PROP_POS_MSEC, timestamp_ms)
         ret, frame = cap.read()
-        print(f"Read frame: {ret}")  # Debug print
         if ret:
             # Convert frame to PIL image
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             images.append(image)
         else:
-            print(f"Failed to read frame at timestamp {timestamp}")
+            print_formatted_text(HTML(f'<warning>Failed to read frame at timestamp {timestamp}</warning>'), style=style)
 
     cap.release()
 
@@ -366,20 +367,20 @@ def create_collage_from_timestamps(video_file_name, timestamps):
 
         # Save the collage to a file
         collage.save('collage.png')
-        print("Collage saved as 'collage.png'.")
+        print_formatted_text(HTML('<info>Collage saved as "collage.png".</info>'), style=style)
 
         # Display the collage
         collage.show()
     else:
-        print("No images to create a collage.")
+        print_formatted_text(HTML('<warning>No images to create a collage.</warning>'), style=style)
 
 if __name__ == "__main__":
 
     # Ask the user to input the search query
-    search_query = prompt("What video do you want to search?: ").strip()
+    search_query = prompt(HTML('<prompt>What video do you want to search?: </prompt>'), style=style).strip()
 
     # Ask the user to choose between image model and video model
-    model_choice = prompt("Choose a model to search the video (image/video): ").strip().lower()
+    model_choice = prompt(HTML('<prompt>Choose a model to search the video (image/video): </prompt>'), style=style).strip().lower()
 
     video_filepath = search_and_download(search_query)
     
@@ -391,9 +392,7 @@ if __name__ == "__main__":
             search_captions(json_filename)
         elif model_choice == "video":
             # Ask the user what to find in the video using the video model
-            print("video_filepath: ", video_filepath)
-            search_word = prompt("Using a video model. What would you like me to find in the video? ").strip()
-            print("USE_GEMINI_STUB: ", os.getenv('USE_GEMINI_STUB')) #TODO: remove this stub
+            search_word = prompt(HTML('<prompt>Using a video model. What would you like me to find in the video? </prompt>'), style=style).strip()
             # Use the stub function if the environment variable is set, otherwise use the actual API call
             if os.getenv('USE_GEMINI_STUB') == 'true':
                 timestamps = call_gemini_stub(video_filepath, search_word)
@@ -402,4 +401,4 @@ if __name__ == "__main__":
             # Create and display a collage of scenes at the given timestamps
             create_collage_from_timestamps(video_filepath, timestamps)
         else:
-            print("Invalid choice. Please choose either 'image' or 'video'.")
+            print_formatted_text(HTML('<error>Invalid choice. Please choose either "image" or "video".</error>'), style=style)
