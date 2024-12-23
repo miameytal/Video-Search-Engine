@@ -22,15 +22,14 @@ model = md.vl(model=model_path)
 def search_and_download(query):
     # Create a unique filename for the JSON file based on the query
     query_hash = hashlib.md5(query.encode()).hexdigest()
-    json_filename = f'scene_captions_{query_hash}.json'
 
     # Determine the video filepath based on the query hash
     video_filename = f"{query_hash}.mp4"
     video_filepath = os.path.join(os.getcwd(), video_filename)
 
-    if os.path.exists(json_filename):
-        print(f"{json_filename} already exists; skipping download and caption generation.")
-        return json_filename, video_filepath
+    if os.path.exists(video_filename):
+        print(f"{video_filename} already exists; skipping download.")
+        return video_filepath
 
     ydl_opts = {
         'format': 'best',
@@ -47,7 +46,7 @@ def search_and_download(query):
             search_results = [entry for entry in search_results if entry is not None]
             if not search_results:
                 print("No results found.")
-                return None, None
+                return None
 
             # Get the first valid result
             video_info = search_results[0]
@@ -66,16 +65,13 @@ def search_and_download(query):
             os.rename(downloaded_video_filename, video_filename)
             print(f"Video renamed to: {video_filename}")
 
-            # Perform scene detection
-            detect_scenes(video_filename, json_filename)
-
     except DownloadError as e:
         print(f"An error occurred: {e}")
         raise
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-    return json_filename, video_filepath
+    return video_filepath
 
 def detect_scenes(video_path, json_filename):
     # Create a video manager
@@ -254,9 +250,22 @@ def call_gemini(video_file_name, word):
 
     # Build a prompt that requests a JSON object with a "timestamps" array
     query_prompt = (
-        f"Search through this video for scenes related to the word '{word}'.\n"
-        "Return your answer in valid JSON with a top-level 'timestamps' key containing an array of timestamps.\n"
-        "If no scenes match, provide an empty array for 'timestamps'."
+        f"Search through this video for scenes related to the description '{word}'.\n"
+        "Return your answer in valid JSON with a top-level 'timestamps' key containing an array of timestamps in the format hh:mm:ss (hours are optional for videos under an hour).\n"
+        "Every timestamp must be less than the length of the video itself.\n"
+        "If no scenes match, provide an empty array for 'timestamps'.\n"
+        "Example response (assuming the video is 100 minutes long):\n"
+        "```json\n"
+        "{\n"
+        "  \"timestamps\": [\"00:02:34\", \"00:05:40\", \"00:08:50\"]\n"
+        "}\n"
+        "```\n"
+        "Another example response (assuming the video is 10 minutes long):\n"
+        "```json\n"
+        "{\n"
+        "  \"timestamps\": [\"02:34\", \"05:40\", \"08:50\"]\n"
+        "}\n"
+        "```"
     )
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content([video_file, query_prompt])
@@ -273,11 +282,27 @@ def call_gemini_stub(video_file_name, word):
     Returns a mock response with timestamps.
     """
     print("Using Gemini stub...")
-    # Mock response with timestamps in seconds
+    # Mock response with timestamps in hh:mm:ss format
     mock_response = {
-        "timestamps": [12.34, 56.78, 90.12]
+        "timestamps": ["00:02:34", "00:05:40", "00:08:50"]
     }
     return mock_response["timestamps"]
+
+def parse_timestamp(timestamp_str):
+    """
+    Parse a timestamp string in the format hh:mm:ss or mm:ss and return the time in milliseconds.
+    """
+    parts = timestamp_str.split(':')
+    if len(parts) == 2:
+        # Format mm:ss
+        minutes, seconds = map(float, parts)
+        return int((minutes * 60 + seconds) * 1000)
+    elif len(parts) == 3:
+        # Format hh:mm:ss
+        hours, minutes, seconds = map(float, parts)
+        return int((hours * 3600 + minutes * 60 + seconds) * 1000)
+    else:
+        raise ValueError(f"Invalid timestamp format: {timestamp_str}")
 
 def create_collage_from_timestamps(video_file_name, timestamps):
     # Open the video file using OpenCV
@@ -289,8 +314,9 @@ def create_collage_from_timestamps(video_file_name, timestamps):
 
     images = []
     for timestamp in timestamps:
-        # Convert timestamp to frame number
-        cap.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000)
+        # Convert timestamp to milliseconds
+        timestamp_ms = parse_timestamp(timestamp)
+        cap.set(cv2.CAP_PROP_POS_MSEC, timestamp_ms)
         ret, frame = cap.read()
         if ret:
             # Convert frame to PIL image
@@ -331,11 +357,13 @@ if __name__ == "__main__":
     model_choice = prompt("Choose a model to search the video (image/video): ").strip().lower()
 
     search_query = "super mario movie trailer"
-    json_filename, video_filepath = search_and_download(search_query)
+    video_filepath = search_and_download(search_query)
     
-    if json_filename and video_filepath:
+    if video_filepath:
         if model_choice == "image":
-            # Search the captions for a word using the image model
+            # Generate and search captions for a word using the image model
+            json_filename = f'scene_captions_{hashlib.md5(search_query.encode()).hexdigest()}.json'
+            detect_scenes(video_filepath, json_filename)
             search_captions(json_filename)
         elif model_choice == "video":
             # Ask the user what to find in the video using the video model
