@@ -273,7 +273,10 @@ def call_gemini(video_file_name, word):
     
     print("Response JSON:", response_json)
     
-    timestamps = response_json.get("timestamps", [])
+    # Extract the JSON string from the response and parse it
+    content = response_json['candidates'][0]['content']['parts'][0]['text']
+    timestamps_json = json.loads(content.strip('```json\n').strip('\n```'))
+    timestamps = timestamps_json.get("timestamps", [])
     return timestamps
 
 def call_gemini_stub(video_file_name, word):
@@ -314,10 +317,12 @@ def create_collage_from_timestamps(video_file_name, timestamps):
 
     images = []
     for timestamp in timestamps:
-        # Convert timestamp to milliseconds
-        timestamp_ms = parse_timestamp(timestamp)
+        # Convert timestamp to milliseconds and add a buffer of 500 milliseconds
+        timestamp_ms = parse_timestamp(timestamp) + 500
+        print(f"Seeking to {timestamp} ({timestamp_ms} ms)")  # Debug print
         cap.set(cv2.CAP_PROP_POS_MSEC, timestamp_ms)
         ret, frame = cap.read()
+        print(f"Read frame: {ret}")  # Debug print
         if ret:
             # Convert frame to PIL image
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
